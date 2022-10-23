@@ -35,8 +35,7 @@ class Todo with _$Todo {
 class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
   late final Todo_contract _todoContract;
   final List<StreamSubscription> _subscriptions = [];
-
-  List<Todo> get _currentTodos => state.value ?? [];
+  List<Todo> _tmp = [];
 
   TodosNotifier() : super(const AsyncValue.loading()) {
     init();
@@ -59,13 +58,13 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
             .taskCreatedEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
           final todo = Todo(id: event.id, name: event.name);
-          _updateState([todo, ..._currentTodos]);
+          _updateState([todo, ..._tmp]);
         }));
 
     _subscribeEvent(() => _todoContract
             .taskDeletedEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
-          _updateState(_currentTodos
+          _updateState(_tmp
               .where((element) => element.id != event.id)
               .toList());
         }));
@@ -74,7 +73,7 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
             .taskIsCompleteToggledEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
           _updateState([
-            for (final todo in _currentTodos)
+            for (final todo in _tmp)
               if (todo.id == event.id)
                 todo.copyWith(completed: event.isComplete)
               else
@@ -86,7 +85,7 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
             .taskUpdatedEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
           _updateState([
-            for (final todo in _currentTodos)
+            for (final todo in _tmp)
               if (todo.id == event.id)
                 todo.copyWith(name: event.name)
               else
@@ -131,7 +130,8 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
   void _execute(Function body) async {
     if (state is AsyncLoading) return;
     try {
-      // state = const AsyncValue.loading();
+      _tmp = state.value ?? [];
+      state = const AsyncValue.loading();
       await body();
     } catch (err, stack) {
       state = AsyncValue.error(err, stack);

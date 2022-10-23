@@ -58,7 +58,6 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
     _subscribeEvent(() => _todoContract
             .taskCreatedEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
-          print("taskCreatedEvents");
           final todo = Todo(id: event.id, name: event.name);
           _updateState([todo, ..._currentTodos]);
         }));
@@ -66,7 +65,6 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
     _subscribeEvent(() => _todoContract
             .taskDeletedEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
-          print("taskDeletedEvents");
           _updateState(_currentTodos
               .where((element) => element.id != event.id)
               .toList());
@@ -75,7 +73,6 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
     _subscribeEvent(() => _todoContract
             .taskIsCompleteToggledEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
-          print("taskIsCompleteToggledEvents");
           _updateState([
             for (final todo in _currentTodos)
               if (todo.id == event.id)
@@ -88,7 +85,6 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
     _subscribeEvent(() => _todoContract
             .taskUpdatedEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
-          print("taskUpdatedEvents");
           _updateState([
             for (final todo in _currentTodos)
               if (todo.id == event.id)
@@ -118,12 +114,14 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
   void _getAllTodos() async {
     state = const AsyncData([]);
     final count = await _todoContract.totalTasksCount();
-    final list = [for (var i = 0; i < count.toInt(); i++) await _getTodo(i)];
+    final list = [for (var i = 0; i < count.toInt(); i++) await _getTodo(i)]
+        .where((element) => element.name.isNotEmpty)
+        .toList();
     state = AsyncData(list);
   }
 
   Future<Todo> _getTodo(int index) async {
-    var masterTodo = await _todoContract.todos(BigInt.from(index));
+    final masterTodo = await _todoContract.todos(BigInt.from(index));
     return Todo(
         id: masterTodo.id,
         name: masterTodo.name,
@@ -131,8 +129,9 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
   }
 
   void _execute(Function body) async {
+    if (state is AsyncLoading) return;
     try {
-      state = const AsyncValue.loading();
+      // state = const AsyncValue.loading();
       await body();
     } catch (err, stack) {
       state = AsyncValue.error(err, stack);

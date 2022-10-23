@@ -31,7 +31,6 @@ class Todo with _$Todo {
   }) = _Todo;
 }
 
-// FIXME:　refactor
 class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
   final _credentials = EthPrivateKey.fromHex(dotenv.env['PRIVATE_KEY']!);
   late final Todo_contract _todoContract;
@@ -95,10 +94,13 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
   void add(String name) =>
       _execute(() => _todoContract.createTask(name, credentials: _credentials));
 
-  void update(Todo todo) => _execute(() =>
-      _todoContract.updateTask(todo.id, todo.name, credentials: _credentials));
+  void update(Todo todo) => _execute(
+      showLoading: false,
+      () => _todoContract.updateTask(todo.id, todo.name,
+          credentials: _credentials));
 
   void toggle(BigInt id) => _execute(
+      showLoading: false,
       () => _todoContract.toggleTaskIsComplete(id, credentials: _credentials));
 
   void remove(BigInt id) =>
@@ -117,11 +119,13 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
 
   void _getAllTodos() async {
     state = const AsyncData([]);
-    final count = await _todoContract.totalTasksCount();
-    final list = [for (var i = 0; i < count.toInt(); i++) await _getTodo(i)]
-        .where((element) => element.name.isNotEmpty)
-        .toList();
-    state = AsyncData(list);
+    _execute(() async {
+      final count = await _todoContract.totalTasksCount();
+      final list = [for (var i = 0; i < count.toInt(); i++) await _getTodo(i)]
+          .where((element) => element.name.isNotEmpty)
+          .toList();
+      state = AsyncData(list);
+    });
   }
 
   Future<Todo> _getTodo(int index) async {
@@ -132,11 +136,13 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
         completed: masterTodo.isComplete);
   }
 
-  void _execute(Function body) async {
-    if (state is AsyncLoading) return;
+  void _execute(Function body, {bool showLoading = true}) async {
+    if (state.isLoading) return;
     try {
       _tmp = state.value ?? [];
-      state = const AsyncValue.loading();
+      if (showLoading) {
+        state = const AsyncValue.loading();
+      }
       await body();
     } catch (err, stack) {
       state = AsyncValue.error(err, stack);

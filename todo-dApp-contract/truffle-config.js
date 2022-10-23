@@ -2,7 +2,7 @@
 module.exports = {
   networks: {
     development: {
-      host: "localhost",
+      host: "192.168.11.10",
       port: 7545,
       network_id: "*",
     },
@@ -10,6 +10,7 @@ module.exports = {
   contracts_directory: "./contracts",
   compilers: {
     solc: {
+      version: "0.8.9",
       optimizer: {
         enabled: true,
         runs: 200,

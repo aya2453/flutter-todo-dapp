@@ -29,4 +29,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - smartcontract/TodoContract.json
+    - lib/smartcontract/todo_contract.abi.json

@@ -3,24 +3,23 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:http/http.dart';
 import 'package:todo_dapp_front/smartcontract/todo_contract.g.dart';
+import 'package:todo_dapp_front/web3client_provider.dart';
 import 'package:web3dart/web3dart.dart';
-import 'package:web_socket_channel/io.dart';
 
 part 'todo.freezed.dart';
 
-const String _privateKey =
-    '5c80dad0c2aa41ddccb09fa5fd438d3a97acf7f6608bba8f5095997a4d7729f2';
-const String _rpcUrl = "http://192.168.11.10:7545";
-const String _wsUrl = "ws://192.168.11.10:7545/";
-final credentials = EthPrivateKey.fromHex(_privateKey);
-
 final todosProvider =
-    StateNotifierProvider<TodosNotifier, AsyncValue<List<Todo>>>((ref) {
-  return TodosNotifier();
+    StateNotifierProvider.autoDispose<TodosNotifier, AsyncValue<List<Todo>>>(
+        (ref) {
+  final todosNotifier = TodosNotifier(ref.read(web3ClientProvider));
+  ref.onDispose(() {
+    todosNotifier.unsubscribe();
+  });
+  return todosNotifier;
 });
 
 @freezed
@@ -32,25 +31,25 @@ class Todo with _$Todo {
   }) = _Todo;
 }
 
+// FIXME:　refactor
 class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
+  final _credentials = EthPrivateKey.fromHex(dotenv.env['PRIVATE_KEY']!);
   late final Todo_contract _todoContract;
   final List<StreamSubscription> _subscriptions = [];
+  final Web3Client _client;
   List<Todo> _tmp = [];
 
-  TodosNotifier() : super(const AsyncValue.loading()) {
+  TodosNotifier(this._client) : super(const AsyncValue.loading()) {
     init();
   }
 
   Future<void> init() async {
-    final client = Web3Client(_rpcUrl, Client(),
-        socketConnector: () =>
-            IOWebSocketChannel.connect(_wsUrl).cast<String>());
     final abiStringFile =
         await rootBundle.loadString('lib/smartcontract/todo_contract.abi.json');
     final jsonAbi = jsonDecode(abiStringFile);
     final contractAddress =
         EthereumAddress.fromHex(jsonAbi["networks"]["5777"]["address"]);
-    _todoContract = Todo_contract(address: contractAddress, client: client);
+    _todoContract = Todo_contract(address: contractAddress, client: _client);
 
     _getAllTodos();
 
@@ -64,9 +63,8 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
     _subscribeEvent(() => _todoContract
             .taskDeletedEvents(toBlock: const BlockNum.genesis())
             .listen((event) {
-          _updateState(_tmp
-              .where((element) => element.id != event.id)
-              .toList());
+          _updateState(
+              _tmp.where((element) => element.id != event.id).toList());
         }));
 
     _subscribeEvent(() => _todoContract
@@ -95,19 +93,26 @@ class TodosNotifier extends StateNotifier<AsyncValue<List<Todo>>> {
   }
 
   void add(String name) =>
-      _execute(() => _todoContract.createTask(name, credentials: credentials));
+      _execute(() => _todoContract.createTask(name, credentials: _credentials));
 
   void update(Todo todo) => _execute(() =>
-      _todoContract.updateTask(todo.id, todo.name, credentials: credentials));
+      _todoContract.updateTask(todo.id, todo.name, credentials: _credentials));
 
   void toggle(BigInt id) => _execute(
-      () => _todoContract.toggleTaskIsComplete(id, credentials: credentials));
+      () => _todoContract.toggleTaskIsComplete(id, credentials: _credentials));
 
   void remove(BigInt id) =>
-      _execute(() => _todoContract.deleteTask(id, credentials: credentials));
+      _execute(() => _todoContract.deleteTask(id, credentials: _credentials));
 
   void _subscribeEvent(StreamSubscription Function() body) {
     _subscriptions.add(body());
+  }
+
+  void unsubscribe() {
+    _subscriptions.forEach((element) {
+      element.cancel();
+    });
+    _client.dispose();
   }
 
   void _getAllTodos() async {
